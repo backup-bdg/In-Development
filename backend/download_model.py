@@ -68,4 +68,3 @@ def download_model():
 if __name__ == "__main__":
     success = download_model()
     print(f"Model download {'successful' if success else 'failed'}")
-

@@ -150,30 +150,51 @@ async def create_chat_session():
 async def chat(session_id: str, message: ChatMessage):
     """Add a message to a chat session and get a response"""
     if model is None:
+        logger.error("Model not loaded when attempting to process chat message")
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     try:
         # Process the user message
         if message.role != "user":
+            logger.warning(f"Received non-user message with role: {message.role}")
             raise HTTPException(status_code=400, detail="Only user messages can be sent")
+        
+        # Log the incoming message
+        logger.info(f"Processing chat message: {message.content[:100]}...")
         
         # Determine intent
         intent = determine_intent(message.content)
+        logger.info(f"Determined intent: {intent}")
         
         # Get context from web if needed
-        context = await search_web(message.content) if "search" in intent.lower() else ""
+        context = ""
+        if "search" in intent.lower():
+            logger.info("Web search intent detected, fetching context...")
+            context = await search_web(message.content)
+        
+        # Use a default context if none was provided or found
+        if not context or context.strip() == "":
+            context = "Please provide a helpful response based on your knowledge."
+            logger.info("Using default context")
         
         # Prepare input for the model
         model_input = {
             'query_text': message.content,
-            'passage_text': context or "Please provide a helpful response based on your knowledge."
+            'passage_text': context
         }
         
+        logger.info("Sending prediction request to model")
         # Get prediction from the model
-        prediction = model.predict(model_input)
+        try:
+            prediction = model.predict(model_input)
+            logger.info("Model prediction received successfully")
+        except Exception as model_error:
+            logger.error(f"Model prediction error: {str(model_error)}")
+            raise HTTPException(status_code=500, detail=f"Model prediction error: {str(model_error)}")
         
         # Extract the answer from the prediction
         answer = extract_answer(prediction, context)
+        logger.info(f"Extracted answer: {answer[:100]}...")
         
         # Create assistant response
         response = ChatMessage(
@@ -185,8 +206,11 @@ async def chat(session_id: str, message: ChatMessage):
         
         return response
     
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
-        logger.error(f"Error in chat: {str(e)}")
+        logger.error(f"Error in chat: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error in chat: {str(e)}")
 
 @app.get("/api/chat/{session_id}/export", response_model=Dict[str, Any])
@@ -251,34 +275,43 @@ def extract_answer(prediction: Dict[str, Any], context: str) -> str:
         logger.info(f"Raw prediction: {prediction}")
         
         # Check if the prediction contains start and end indices
-        if isinstance(prediction, dict) and 'start_span' in prediction and 'end_span' in prediction:
-            # Handle array or single value
-            start_idx = prediction['start_span'][0] if isinstance(prediction['start_span'], list) else prediction['start_span']
-            end_idx = prediction['end_span'][0] if isinstance(prediction['end_span'], list) else prediction['end_span']
+        if isinstance(prediction, dict):
+            # Handle different prediction formats
+            if 'start_span' in prediction and 'end_span' in prediction:
+                # Handle array or single value
+                start_idx = prediction['start_span'][0] if isinstance(prediction['start_span'], list) else prediction['start_span']
+                end_idx = prediction['end_span'][0] if isinstance(prediction['end_span'], list) else prediction['end_span']
+                
+                # Convert to integers if they're numpy values or floats
+                start_idx = int(start_idx)
+                end_idx = int(end_idx)
+                
+                logger.info(f"Extracted indices: start={start_idx}, end={end_idx}")
+                
+                # Validate indices
+                if start_idx >= 0 and end_idx >= start_idx and end_idx < len(context):
+                    answer = context[start_idx:end_idx+1].strip()
+                    logger.info(f"Extracted answer: {answer}")
+                    return answer
+                else:
+                    logger.warning(f"Invalid indices: start={start_idx}, end={end_idx}, context_length={len(context)}")
             
-            # Convert to integers if they're numpy values or floats
-            start_idx = int(start_idx)
-            end_idx = int(end_idx)
+            # Try other common output formats
+            for key in ['answer', 'text', 'response', 'output', 'prediction']:
+                if key in prediction:
+                    if isinstance(prediction[key], str):
+                        return prediction[key]
+                    elif isinstance(prediction[key], (list, np.ndarray)) and len(prediction[key]) > 0:
+                        # Handle array outputs
+                        return str(prediction[key][0])
             
-            logger.info(f"Extracted indices: start={start_idx}, end={end_idx}")
-            
-            # Validate indices
-            if start_idx >= 0 and end_idx >= start_idx and end_idx < len(context):
-                answer = context[start_idx:end_idx+1].strip()
-                logger.info(f"Extracted answer: {answer}")
-                return answer
-            else:
-                logger.warning(f"Invalid indices: start={start_idx}, end={end_idx}, context_length={len(context)}")
+            # If we have confidence scores, use the highest one
+            if 'confidence' in prediction and 'candidates' in prediction:
+                if isinstance(prediction['candidates'], list) and len(prediction['candidates']) > 0:
+                    return str(prediction['candidates'][0])
         
         # If we can't extract a specific answer from the prediction format
-        # Try to find any relevant information in the prediction
-        if isinstance(prediction, dict):
-            # Look for any field that might contain the answer
-            for key in ['answer', 'text', 'response', 'output']:
-                if key in prediction and isinstance(prediction[key], str):
-                    return prediction[key]
-        
-        # If all else fails, generate a response based on the context
+        # Generate a response based on the context
         return "Based on the information provided, I don't have a specific answer. Please try rephrasing your question."
     
     except Exception as e:

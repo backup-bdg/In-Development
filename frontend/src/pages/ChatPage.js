@@ -20,6 +20,7 @@ const ChatPage = () => {
     showTimestamps: true,
   });
   const [backendAvailable, setBackendAvailable] = useState(true);
+  const [modelLoaded, setModelLoaded] = useState(true);
   
   const messagesEndRef = useRef(null);
 
@@ -30,12 +31,21 @@ const ChatPage = () => {
         setLoading(true);
         
         // Check if backend is available
-        const isHealthy = await chatService.checkHealth();
-        setBackendAvailable(isHealthy);
+        const healthCheck = await chatService.checkHealth();
+        setBackendAvailable(healthCheck);
         
-        if (!isHealthy) {
+        if (!healthCheck) {
           setError('Backend service is not available. Using fallback mode.');
           console.warn('Backend service is not available. Using fallback mode.');
+          setModelLoaded(false);
+        } else {
+          // Extract model loaded status from health check
+          setModelLoaded(healthCheck);
+          
+          if (!healthCheck) {
+            setError('AI model is not loaded. Some features may be limited.');
+            console.warn('AI model is not loaded. Some features may be limited.');
+          }
         }
         
         // Create a new chat session
@@ -54,6 +64,7 @@ const ChatPage = () => {
       } catch (err) {
         console.error('Failed to initialize chat session:', err);
         setError('Failed to start chat session. Please try again.');
+        setBackendAvailable(false);
       } finally {
         setLoading(false);
       }
@@ -82,25 +93,56 @@ const ChatPage = () => {
     setError(null);
     
     try {
-      // Call API to get AI response
-      const response = await chatService.sendMessage(sessionId, userMessage, useWebSearch);
-      
-      // Add AI response to chat
-      setMessages((prevMessages) => [...prevMessages, response]);
-    } catch (err) {
-      console.error('Error sending message:', err);
-      setError('Failed to get a response. Please try again.');
-      
-      // Add error message
+      // Show typing indicator
+      const typingIndicatorId = Date.now();
       setMessages((prevMessages) => [
         ...prevMessages,
         {
+          id: typingIndicatorId,
           role: 'assistant',
-          content: 'Sorry, I encountered an error processing your request. Please try again.',
-          intent: 'error',
+          content: '...',
+          intent: 'typing',
           timestamp: new Date().toISOString(),
         },
       ]);
+      
+      // Call API to get AI response
+      const response = await chatService.sendMessage(sessionId, userMessage, useWebSearch);
+      
+      // Remove typing indicator and add AI response to chat
+      setMessages((prevMessages) => {
+        const filteredMessages = prevMessages.filter(msg => msg.id !== typingIndicatorId);
+        return [...filteredMessages, response];
+      });
+    } catch (err) {
+      console.error('Error sending message:', err);
+      
+      // Create a user-friendly error message
+      let errorMessage = 'Sorry, I encountered an error processing your request. Please try again.';
+      
+      if (err.status === 503) {
+        errorMessage = 'The AI model is not currently loaded. Please try again later.';
+      } else if (err.data && err.data.detail) {
+        errorMessage = `Error: ${err.data.detail}`;
+      }
+      
+      setError('Failed to get a response. Please try again.');
+      
+      // Remove typing indicator if it exists
+      setMessages((prevMessages) => {
+        const filteredMessages = prevMessages.filter(msg => msg.intent !== 'typing');
+        
+        // Add error message
+        return [
+          ...filteredMessages,
+          {
+            role: 'assistant',
+            content: errorMessage,
+            intent: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      });
     } finally {
       setLoading(false);
     }
