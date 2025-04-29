@@ -12,6 +12,7 @@ import aiohttp
 import asyncio
 from bs4 import BeautifulSoup
 import requests
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,16 +30,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load the ML model
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "BERTSQUADFP16.mlmodel")
+# Determine model path from environment variable or default location
+model_data_path = os.environ.get('MODEL_DATA_PATH', None)
+if model_data_path:
+    MODEL_PATH = os.path.join(model_data_path, "BERTSQUADFP16.mlmodel")
+else:
+    MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "BERTSQUADFP16.mlmodel")
 
-try:
-    logger.info(f"Loading model from {MODEL_PATH}")
-    model = ct.models.MLModel(MODEL_PATH)
-    logger.info("Model loaded successfully")
-except Exception as e:
-    logger.error(f"Error loading model: {str(e)}")
-    model = None
+# Check if model exists, if not try to download it
+if not os.path.exists(MODEL_PATH):
+    logger.warning(f"Model not found at {MODEL_PATH}. Attempting to download...")
+    # Add the parent directory to sys.path to import download_model
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.append(parent_dir)
+    
+    try:
+        from download_model import download_model
+        if not download_model():
+            logger.error("Failed to download model")
+            model = None
+        else:
+            # Try loading the model after download
+            try:
+                logger.info(f"Loading model from {MODEL_PATH}")
+                model = ct.models.MLModel(MODEL_PATH)
+                logger.info("Model loaded successfully")
+            except Exception as e:
+                logger.error(f"Error loading model after download: {str(e)}")
+                model = None
+    except ImportError:
+        logger.error("Could not import download_model module")
+        model = None
+else:
+    # Load the ML model
+    try:
+        logger.info(f"Loading model from {MODEL_PATH}")
+        model = ct.models.MLModel(MODEL_PATH)
+        logger.info("Model loaded successfully")
+    except Exception as e:
+        logger.error(f"Error loading model: {str(e)}")
+        model = None
 
 # Define request and response models
 class QueryRequest(BaseModel):
@@ -60,7 +92,12 @@ class ChatSession(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"status": "healthy", "model_loaded": model is not None}
+    model_status = {
+        "model_loaded": model is not None,
+        "model_path": MODEL_PATH,
+        "model_exists": os.path.exists(MODEL_PATH)
+    }
+    return {"status": "healthy", **model_status}
 
 @app.post("/api/query", response_model=Dict[str, Any])
 async def process_query(request: QueryRequest):
@@ -255,4 +292,3 @@ def get_current_timestamp() -> str:
     """Get the current timestamp in ISO format"""
     from datetime import datetime
     return datetime.utcnow().isoformat() + "Z"
-
