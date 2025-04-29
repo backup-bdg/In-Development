@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Dropbox direct download link for the .mlmodel file
 # Note: This should be a direct download link from Dropbox (usually ends with ?dl=1)
-DROPBOX_LINK = "https://www.dropbox.com/scl/fi/your-file-path/BERTSQUADFP16.mlmodel?dl=1"
+DROPBOX_LINK = "https://www.dropbox.com/scl/fi/w4iclrvil6vh39mg6j7pl/BERTSQUADFP16.mlmodel?rlkey=vbrr9jjvsam1xg9i4i19pkdra&st=ho9dyrm6&dl=1"
 
 # Function to validate the downloaded model
 def validate_model(model_path):
