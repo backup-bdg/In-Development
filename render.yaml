@@ -5,20 +5,20 @@ services:
     env: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: standard
+    plan: free
     scaling:
       minInstances: 1
-      maxInstances: 3
+      maxInstances: 1  # Free tier supports only 1 instance
       targetCPUPercent: 70
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: LOG_LEVEL
         value: info
-    disk:
-      name: model-data
-      mountPath: /app/app/model
-      sizeGB: 1
+      - key: MODEL_DATA_PATH  # Optional: Point to /tmp for model data
+        value: /tmp/model
+    # Note: Using /tmp for storage since disk is not available in free tier
+    # Ensure the app can handle ephemeral storage (e.g., re-download model data on start)
 
   # Frontend service
   - type: web
@@ -27,10 +27,12 @@ services:
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     plan: free
+    scaling:
+      minInstances: 1
+      maxInstances: 1  # Free tier supports only 1 instance
     envVars:
       - key: REACT_APP_API_URL
         fromService:
           name: backdoor-ai-backend
           type: web
           property: host
-
