@@ -14,7 +14,10 @@ services:
       - key: MODEL_DATA_PATH
         value: /tmp/model
     # Note: Using /tmp for storage since disk is not available in free tier
-    # Ensure the app can handle ephemeral storage (e.g., re-download model data on start)
+    # The app will download the model on startup if it doesn't exist
+    healthCheckPath: /
+    buildCommand: python download_model.py
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
 
   # Frontend service
   - type: web
