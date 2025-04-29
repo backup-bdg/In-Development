@@ -108,3 +108,7 @@ Once the backend is running, you can access the API documentation at:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Author
+
+Created by Backdoor AI Team
+
