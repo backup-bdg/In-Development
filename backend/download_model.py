@@ -11,6 +11,29 @@ logger = logging.getLogger(__name__)
 # Note: This should be a direct download link from Dropbox (usually ends with ?dl=1)
 DROPBOX_LINK = "https://www.dropbox.com/scl/fi/your-file-path/BERTSQUADFP16.mlmodel?dl=1"
 
+# Function to validate the downloaded model
+def validate_model(model_path):
+    """
+    Validate that the downloaded model is a valid CoreML model.
+    
+    Args:
+        model_path (str): Path to the downloaded model file
+        
+    Returns:
+        bool: True if the model is valid, False otherwise
+    """
+    try:
+        import coremltools as ct
+        # Try to load the model to validate it
+        model = ct.models.MLModel(model_path)
+        # Get basic model info to verify it loaded correctly
+        spec = model.get_spec()
+        logger.info(f"Model validated successfully: {spec.description.metadata.shortDescription}")
+        return True
+    except Exception as e:
+        logger.error(f"Model validation failed: {str(e)}")
+        return False
+
 def download_model():
     """
     Download the ML model from Dropbox and save it to the appropriate location.
@@ -28,7 +51,11 @@ def download_model():
     # Check if the model already exists
     if os.path.exists(model_path):
         logger.info(f"Model already exists at {model_path}")
-        return True
+        # Validate the existing model
+        if validate_model(model_path):
+            return True
+        else:
+            logger.warning("Existing model is invalid. Will attempt to re-download.")
     
     try:
         logger.info(f"Downloading model from Dropbox to {model_path}")
@@ -56,7 +83,13 @@ def download_model():
                         logger.info(f"Download progress: {progress:.2f}% ({downloaded}/{total_size} bytes)")
             
             logger.info(f"Model downloaded successfully to {model_path}")
-            return True
+            
+            # Validate the downloaded model
+            if validate_model(model_path):
+                return True
+            else:
+                logger.error("Downloaded model failed validation")
+                return False
         else:
             logger.error(f"Failed to download model. Status code: {response.status_code}")
             return False
@@ -68,4 +101,3 @@ def download_model():
 if __name__ == "__main__":
     success = download_model()
     print(f"Model download {'successful' if success else 'failed'}")
-
