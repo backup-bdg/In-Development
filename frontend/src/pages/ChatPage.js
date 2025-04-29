@@ -20,6 +20,7 @@ const ChatPage = () => {
     showTimestamps: true,
   });
   const [backendAvailable, setBackendAvailable] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
   
   const messagesEndRef = useRef(null);
 
@@ -34,8 +35,8 @@ const ChatPage = () => {
         setBackendAvailable(isHealthy);
         
         if (!isHealthy) {
-          setError('Backend service is not available. Using fallback mode.');
-          console.warn('Backend service is not available. Using fallback mode.');
+          setError('Backend service is not available or model is not loaded. Using fallback mode.');
+          console.warn('Backend service is not available or model is not loaded. Using fallback mode.');
         }
         
         // Create a new chat session
@@ -82,14 +83,24 @@ const ChatPage = () => {
     setError(null);
     
     try {
-      // Call API to get AI response
-      const response = await chatService.sendMessage(sessionId, userMessage, useWebSearch);
+      // Call API to get AI response with retry mechanism
+      const response = await chatService.retryRequest(
+        () => chatService.sendMessage(sessionId, userMessage, useWebSearch),
+        3, // max retries
+        1000 // delay between retries in ms
+      );
       
       // Add AI response to chat
       setMessages((prevMessages) => [...prevMessages, response]);
+      // Reset retry count on success
+      setRetryCount(0);
     } catch (err) {
       console.error('Error sending message:', err);
-      setError('Failed to get a response. Please try again.');
+      const errorMessage = err.message || 'Failed to get a response. Please try again.';
+      setError(errorMessage);
+      
+      // Increment retry count
+      setRetryCount(prev => prev + 1);
       
       // Add error message
       setMessages((prevMessages) => [
@@ -101,6 +112,11 @@ const ChatPage = () => {
           timestamp: new Date().toISOString(),
         },
       ]);
+      
+      // If we've had multiple failures, suggest refreshing the page
+      if (retryCount >= 2) {
+        setError('Multiple errors detected. The AI model might not be loaded correctly. Try refreshing the page or contact support.');
+      }
     } finally {
       setLoading(false);
     }
@@ -129,9 +145,47 @@ const ChatPage = () => {
     setError(null);
   };
 
+  const handleRetryConnection = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Check backend health
+      const isHealthy = await chatService.checkHealth();
+      setBackendAvailable(isHealthy);
+      
+      if (isHealthy) {
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          {
+            role: 'assistant',
+            content: 'Connection restored! You can continue chatting.',
+            intent: 'system',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        setError('Backend service is still unavailable. Please try again later.');
+      }
+    } catch (err) {
+      console.error('Error checking backend health:', err);
+      setError('Failed to check backend connection. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+        <Button
+          variant="outlined"
+          color="primary"
+          onClick={handleRetryConnection}
+          disabled={loading || backendAvailable}
+        >
+          Retry Connection
+        </Button>
         <Button
           variant="outlined"
           startIcon={<DownloadIcon />}
@@ -174,7 +228,7 @@ const ChatPage = () => {
             </Box>
           ) : (
             messages.map((msg, index) => (
-              <ChatMessage key={index} message={msg} />
+              <ChatMessage key={index} message={msg} showTimestamp={settings.showTimestamps} />
             ))
           )}
           {loading && (
@@ -188,6 +242,8 @@ const ChatPage = () => {
         <ChatInput
           onSendMessage={handleSendMessage}
           onToggleSettings={() => setSettingsOpen(true)}
+          disabled={loading || !backendAvailable}
+          webSearchEnabled={settings.webSearchEnabled}
         />
       </Paper>
       

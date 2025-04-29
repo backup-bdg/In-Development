@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import traceback
 from typing import List, Dict, Any, Optional
 import numpy as np
 import coremltools as ct
@@ -37,40 +38,54 @@ if model_data_path:
 else:
     MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "BERTSQUADFP16.mlmodel")
 
-# Check if model exists, if not try to download it
-if not os.path.exists(MODEL_PATH):
-    logger.warning(f"Model not found at {MODEL_PATH}. Attempting to download...")
-    # Add the parent directory to sys.path to import download_model
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if parent_dir not in sys.path:
-        sys.path.append(parent_dir)
+# Global variable to store the loaded model
+model = None
+
+# Function to load the model
+def load_model():
+    global model
     
-    try:
-        from download_model import download_model
-        if not download_model():
-            logger.error("Failed to download model")
-            model = None
-        else:
-            # Try loading the model after download
-            try:
-                logger.info(f"Loading model from {MODEL_PATH}")
-                model = ct.models.MLModel(MODEL_PATH)
-                logger.info("Model loaded successfully")
-            except Exception as e:
-                logger.error(f"Error loading model after download: {str(e)}")
-                model = None
-    except ImportError:
-        logger.error("Could not import download_model module")
-        model = None
-else:
-    # Load the ML model
-    try:
-        logger.info(f"Loading model from {MODEL_PATH}")
-        model = ct.models.MLModel(MODEL_PATH)
-        logger.info("Model loaded successfully")
-    except Exception as e:
-        logger.error(f"Error loading model: {str(e)}")
-        model = None
+    # Check if model exists, if not try to download it
+    if not os.path.exists(MODEL_PATH):
+        logger.warning(f"Model not found at {MODEL_PATH}. Attempting to download...")
+        # Add the parent directory to sys.path to import download_model
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent_dir not in sys.path:
+            sys.path.append(parent_dir)
+        
+        try:
+            from download_model import download_model
+            if not download_model():
+                logger.error("Failed to download model")
+                return False
+            else:
+                # Try loading the model after download
+                try:
+                    logger.info(f"Loading model from {MODEL_PATH}")
+                    model = ct.models.MLModel(MODEL_PATH)
+                    logger.info("Model loaded successfully")
+                    return True
+                except Exception as e:
+                    logger.error(f"Error loading model after download: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    return False
+        except ImportError:
+            logger.error("Could not import download_model module")
+            return False
+    else:
+        # Load the ML model
+        try:
+            logger.info(f"Loading model from {MODEL_PATH}")
+            model = ct.models.MLModel(MODEL_PATH)
+            logger.info("Model loaded successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error loading model: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
+
+# Load the model on startup
+model_loaded = load_model()
 
 # Define request and response models
 class QueryRequest(BaseModel):
@@ -92,6 +107,12 @@ class ChatSession(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint"""
+    global model, model_loaded
+    
+    # Try to reload the model if it's not loaded
+    if model is None and not model_loaded:
+        model_loaded = load_model()
+    
     model_status = {
         "model_loaded": model is not None,
         "model_path": MODEL_PATH,
@@ -102,6 +123,12 @@ async def root():
 @app.post("/api/query", response_model=Dict[str, Any])
 async def process_query(request: QueryRequest):
     """Process a query using the ML model"""
+    global model, model_loaded
+    
+    # Try to reload the model if it's not loaded
+    if model is None and not model_loaded:
+        model_loaded = load_model()
+    
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     
@@ -138,6 +165,7 @@ async def process_query(request: QueryRequest):
     
     except Exception as e:
         logger.error(f"Error processing query: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 @app.post("/api/chat/session", response_model=ChatSession)
@@ -149,6 +177,12 @@ async def create_chat_session():
 @app.post("/api/chat/{session_id}", response_model=ChatMessage)
 async def chat(session_id: str, message: ChatMessage):
     """Add a message to a chat session and get a response"""
+    global model, model_loaded
+    
+    # Try to reload the model if it's not loaded
+    if model is None and not model_loaded:
+        model_loaded = load_model()
+    
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     
@@ -169,8 +203,17 @@ async def chat(session_id: str, message: ChatMessage):
             'passage_text': context or "Please provide a helpful response based on your knowledge."
         }
         
+        # Log the model input for debugging
+        logger.info(f"Model input: {json.dumps(model_input)}")
+        
         # Get prediction from the model
-        prediction = model.predict(model_input)
+        try:
+            prediction = model.predict(model_input)
+            logger.info(f"Raw prediction: {prediction}")
+        except Exception as e:
+            logger.error(f"Error during model prediction: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"Model prediction error: {str(e)}")
         
         # Extract the answer from the prediction
         answer = extract_answer(prediction, context)
@@ -187,6 +230,7 @@ async def chat(session_id: str, message: ChatMessage):
     
     except Exception as e:
         logger.error(f"Error in chat: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error in chat: {str(e)}")
 
 @app.get("/api/chat/{session_id}/export", response_model=Dict[str, Any])
@@ -248,7 +292,14 @@ async def search_web(query: str) -> str:
 def extract_answer(prediction: Dict[str, Any], context: str) -> str:
     """Extract the answer from the model prediction"""
     try:
-        logger.info(f"Raw prediction: {prediction}")
+        logger.info(f"Raw prediction type: {type(prediction)}")
+        
+        # If prediction is a numpy array, convert to Python types
+        if hasattr(prediction, 'tolist'):
+            prediction = prediction.tolist()
+        
+        # Log the prediction for debugging
+        logger.info(f"Processed prediction: {json.dumps(prediction, default=str)}")
         
         # Check if the prediction contains start and end indices
         if isinstance(prediction, dict) and 'start_span' in prediction and 'end_span' in prediction:
@@ -278,11 +329,12 @@ def extract_answer(prediction: Dict[str, Any], context: str) -> str:
                 if key in prediction and isinstance(prediction[key], str):
                     return prediction[key]
         
-        # If all else fails, generate a response based on the context
+        # Fallback: Generate a generic response based on the query
         return "Based on the information provided, I don't have a specific answer. Please try rephrasing your question."
     
     except Exception as e:
         logger.error(f"Error extracting answer: {str(e)}")
+        logger.error(traceback.format_exc())
         return "I encountered an error while processing your question. Please try again."
 
 def determine_intent(query: str) -> str:

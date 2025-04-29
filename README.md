@@ -1,157 +1,127 @@
-# Backdoor AI - ML Model Integration
+# Backdoor AI - CoreML Chat Application
 
-This project integrates an Apple .mlmodel file (BERTSQUADFP16.mlmodel) for AI-powered chat functionality. The application consists of a React frontend and a FastAPI backend that uses the Core ML model for processing user queries.
+A web application that uses Apple's CoreML model to provide AI chat functionality.
 
-## Features
+## Overview
 
-- AI-powered chat interface
-- Integration with Apple's Core ML model
-- Web search capability for enhanced responses
-- Responsive UI with Material-UI components
-- Docker containerization for easy deployment
+This application consists of:
 
-## Project Structure
-
-```
-.
-├── backend/                 # FastAPI backend
-│   ├── app/                 # Main application code
-│   │   ├── model/           # Directory for the ML model
-│   │   └── main.py          # FastAPI application
-│   ├── download_model.py    # Script to download the model from Dropbox
-│   ├── test_model.py        # Script to test the model functionality
-│   ├── run.py               # Script to run the backend locally
-│   ├── requirements.txt     # Python dependencies
-│   └── Dockerfile           # Docker configuration for backend
-├── frontend/                # React frontend
-│   ├── public/              # Static files
-│   ├── src/                 # React source code
-│   │   ├── components/      # UI components
-│   │   ├── pages/           # Page components
-│   │   └── services/        # API services
-│   ├── Dockerfile           # Docker configuration for frontend
-│   ├── nginx.conf           # Nginx configuration
-│   └── docker-entrypoint.sh # Docker entrypoint script
-├── docker-compose.yml       # Docker Compose configuration
-└── README.md                # Project documentation
-```
+- **Backend**: A FastAPI server that loads and uses a CoreML model for processing chat messages
+- **Frontend**: A React application that provides a user-friendly chat interface
 
 ## Prerequisites
 
-- Docker and Docker Compose
-- Node.js and npm (for local development)
-- Python 3.9+ (for local development)
-- A Dropbox link to the BERTSQUADFP16.mlmodel file
+- Python 3.8+
+- Node.js 14+
+- Docker and Docker Compose (optional, for containerized deployment)
 
 ## Setup Instructions
 
-### 1. Configure the Dropbox Link
-
-Edit the `backend/download_model.py` file and update the `DROPBOX_LINK` variable with your Dropbox direct download link:
-
-```python
-DROPBOX_LINK = "https://www.dropbox.com/scl/fi/your-file-path/BERTSQUADFP16.mlmodel?dl=1"
-```
-
-Make sure the link ends with `?dl=1` to enable direct download.
-
-### 2. Running with Docker Compose
-
-The easiest way to run the application is using Docker Compose:
+### 1. Clone the Repository
 
 ```bash
-# Build and start the containers
-docker-compose up --build
-
-# To run in detached mode
-docker-compose up -d --build
+git clone <repository-url>
+cd <repository-directory>
 ```
 
-This will:
-- Build the backend and frontend containers
-- Download the ML model from Dropbox
-- Start the services
-- Make the application available at http://localhost:3000
+### 2. Set Up the CoreML Model
 
-### 3. Running Locally for Development
+The application requires a CoreML model file (`BERTSQUADFP16.mlmodel`) to function. You need to provide a Dropbox direct download link to your model file.
 
-#### Backend Setup
+#### Option 1: Using the Setup Script
 
 ```bash
-# Navigate to the backend directory
 cd backend
+python setup_model.py --dropbox-link "https://www.dropbox.com/your-direct-download-link?dl=1"
+```
 
-# Create a virtual environment
-python -m venv venv
+This script will:
+- Update the Dropbox link in the configuration
+- Download the model
+- Verify that the model works correctly
 
-# Activate the virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
+#### Option 2: Manual Setup
 
-# Install dependencies
+1. Update the Dropbox link in `backend/download_model.py`:
+   ```python
+   DROPBOX_LINK = "https://www.dropbox.com/your-direct-download-link?dl=1"
+   ```
+
+2. Download the model:
+   ```bash
+   cd backend
+   python download_model.py
+   ```
+
+3. Verify the model:
+   ```bash
+   python verify_model.py
+   ```
+
+### 3. Start the Backend Server
+
+```bash
+cd backend
 pip install -r requirements.txt
-
-# Download the model
-python download_model.py
-
-# Run the backend
 python run.py
 ```
 
-The backend will be available at http://localhost:8000.
+The backend server will start at http://localhost:8000
 
-#### Frontend Setup
+### 4. Start the Frontend Application
 
 ```bash
-# Navigate to the frontend directory
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start the development server
 npm start
 ```
 
-The frontend will be available at http://localhost:3000 and will proxy API requests to the backend.
+The frontend application will start at http://localhost:3000
 
-## API Endpoints
+## Docker Deployment
 
-- `GET /`: Health check endpoint
-- `POST /api/query`: Process a query using the ML model
-- `POST /api/chat/session`: Create a new chat session
-- `POST /api/chat/{session_id}`: Add a message to a chat session and get a response
-- `GET /api/chat/{session_id}/export`: Export a chat session as JSON
+You can also deploy the application using Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+This will start both the backend and frontend services in containers.
 
 ## Troubleshooting
 
-### Model Download Issues
+### Model Not Loading
 
-If the model fails to download:
+If the model is not loading correctly:
 
-1. Check that your Dropbox link is valid and accessible
-2. Ensure the link ends with `?dl=1` for direct download
-3. Try downloading the model manually and placing it in `backend/app/model/BERTSQUADFP16.mlmodel`
+1. Verify that the model file exists:
+   ```bash
+   cd backend
+   python verify_model.py
+   ```
 
-### Backend Connection Issues
+2. Check the backend logs for any errors:
+   ```bash
+   cd backend
+   python run.py
+   ```
 
-If the frontend cannot connect to the backend:
+3. Make sure the Dropbox link is a direct download link (ends with `?dl=1`)
 
-1. Check that both services are running
-2. Verify the API URL configuration in the frontend
-3. Check for CORS issues in the browser console
+### Chat Not Working
 
-### Model Loading Issues
+If the chat functionality is not working:
 
-If the model fails to load:
+1. Check the browser console for any errors
+2. Verify that the backend is running and accessible
+3. Check the backend health endpoint: http://localhost:8000/
+4. Try restarting both the backend and frontend services
 
-1. Ensure the model file exists in the correct location
-2. Check the backend logs for specific error messages
-3. Verify that the model format is compatible with the coremltools version
+## API Documentation
+
+The backend API documentation is available at http://localhost:8000/docs when the server is running.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+[Your License Information]
 
