@@ -247,24 +247,43 @@ async def search_web(query: str) -> str:
 
 def extract_answer(prediction: Dict[str, Any], context: str) -> str:
     """Extract the answer from the model prediction"""
-    # This function needs to be adapted based on the actual output format of your model
-    # For BERT-based question answering models, the output is typically start and end indices
-    
     try:
-        # Example implementation - adjust based on your model's output format
-        if 'start_span' in prediction and 'end_span' in prediction:
-            start_idx = int(prediction['start_span'][0])
-            end_idx = int(prediction['end_span'][0])
-            
-            if start_idx <= end_idx and end_idx < len(context):
-                return context[start_idx:end_idx+1]
+        logger.info(f"Raw prediction: {prediction}")
         
-        # If we can't extract a specific answer, return a default response
-        return "I'm not sure I can provide a specific answer based on the available information."
+        # Check if the prediction contains start and end indices
+        if isinstance(prediction, dict) and 'start_span' in prediction and 'end_span' in prediction:
+            # Handle array or single value
+            start_idx = prediction['start_span'][0] if isinstance(prediction['start_span'], list) else prediction['start_span']
+            end_idx = prediction['end_span'][0] if isinstance(prediction['end_span'], list) else prediction['end_span']
+            
+            # Convert to integers if they're numpy values or floats
+            start_idx = int(start_idx)
+            end_idx = int(end_idx)
+            
+            logger.info(f"Extracted indices: start={start_idx}, end={end_idx}")
+            
+            # Validate indices
+            if start_idx >= 0 and end_idx >= start_idx and end_idx < len(context):
+                answer = context[start_idx:end_idx+1].strip()
+                logger.info(f"Extracted answer: {answer}")
+                return answer
+            else:
+                logger.warning(f"Invalid indices: start={start_idx}, end={end_idx}, context_length={len(context)}")
+        
+        # If we can't extract a specific answer from the prediction format
+        # Try to find any relevant information in the prediction
+        if isinstance(prediction, dict):
+            # Look for any field that might contain the answer
+            for key in ['answer', 'text', 'response', 'output']:
+                if key in prediction and isinstance(prediction[key], str):
+                    return prediction[key]
+        
+        # If all else fails, generate a response based on the context
+        return "Based on the information provided, I don't have a specific answer. Please try rephrasing your question."
     
     except Exception as e:
         logger.error(f"Error extracting answer: {str(e)}")
-        return "I encountered an error while processing your question."
+        return "I encountered an error while processing your question. Please try again."
 
 def determine_intent(query: str) -> str:
     """Determine the intent of the user's query"""

@@ -1,16 +1,17 @@
 import axios from 'axios';
 
-// Define API base URL - will use the proxy in development
+// Define API base URL - will use the proxy in development or the placeholder in production
 const API_URL = process.env.NODE_ENV === 'production' 
-  ? process.env.REACT_APP_API_URL || 'https://backdoor-ai-backend.onrender.com' 
+  ? process.env.REACT_APP_API_URL || 'REACT_APP_API_URL_PLACEHOLDER' 
   : '';
 
-// Create axios instance
+// Create axios instance with timeout
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 seconds timeout
 });
 
 // Mock response for development when backend is not available
@@ -43,7 +44,10 @@ export const chatService = {
   createSession: async () => {
     try {
       const response = await api.post('/api/chat/session');
-      return response.data;
+      return {
+        sessionId: response.data.session_id,
+        messages: response.data.messages || []
+      };
     } catch (error) {
       console.error('Error creating chat session:', error);
       // Return a mock session ID for development
@@ -59,7 +63,16 @@ export const chatService = {
         ...message,
         web_search: useWebSearch,
       });
-      return response.data;
+      
+      // Log the response for debugging
+      console.log('API response:', response.data);
+      
+      return {
+        role: response.data.role || 'assistant',
+        content: response.data.content || 'Sorry, I could not generate a response.',
+        intent: response.data.intent || 'general_response',
+        timestamp: response.data.timestamp || new Date().toISOString(),
+      };
     } catch (error) {
       console.error('Error sending message:', error);
       
@@ -87,11 +100,11 @@ export const chatService = {
   checkHealth: async () => {
     try {
       const response = await api.get('/');
-      return response.data.status === 'healthy';
+      console.log('Health check response:', response.data);
+      return response.data.status === 'healthy' && response.data.model_loaded === true;
     } catch (error) {
       console.error('Backend health check failed:', error);
       return false;
     }
   },
 };
-

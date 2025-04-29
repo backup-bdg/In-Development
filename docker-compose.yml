@@ -8,11 +8,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
       - model-data:/app/app/model
     environment:
       - ENVIRONMENT=development
       - LOG_LEVEL=info
+      - MODEL_DATA_PATH=/app/app/model
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
@@ -27,6 +27,8 @@ services:
     container_name: backdoor-ai-frontend
     ports:
       - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped
@@ -34,4 +36,3 @@ services:
 volumes:
   model-data:
     driver: local
-

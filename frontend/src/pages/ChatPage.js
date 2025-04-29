@@ -19,6 +19,7 @@ const ChatPage = () => {
     darkMode: false,
     showTimestamps: true,
   });
+  const [backendAvailable, setBackendAvailable] = useState(true);
   
   const messagesEndRef = useRef(null);
 
@@ -26,10 +27,20 @@ const ChatPage = () => {
   useEffect(() => {
     const initSession = async () => {
       try {
-        // For now, just generate a client-side session ID
-        // In a production app, you'd get this from the backend
-        const newSessionId = uuidv4();
-        setSessionId(newSessionId);
+        setLoading(true);
+        
+        // Check if backend is available
+        const isHealthy = await chatService.checkHealth();
+        setBackendAvailable(isHealthy);
+        
+        if (!isHealthy) {
+          setError('Backend service is not available. Using fallback mode.');
+          console.warn('Backend service is not available. Using fallback mode.');
+        }
+        
+        // Create a new chat session
+        const session = await chatService.createSession();
+        setSessionId(session.sessionId);
         
         // Add welcome message
         setMessages([
@@ -43,6 +54,8 @@ const ChatPage = () => {
       } catch (err) {
         console.error('Failed to initialize chat session:', err);
         setError('Failed to start chat session. Please try again.');
+      } finally {
+        setLoading(false);
       }
     };
     
@@ -66,6 +79,7 @@ const ChatPage = () => {
     
     setMessages((prevMessages) => [...prevMessages, userMessage]);
     setLoading(true);
+    setError(null);
     
     try {
       // Call API to get AI response

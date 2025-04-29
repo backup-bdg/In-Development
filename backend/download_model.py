@@ -1,69 +1,71 @@
 import os
 import requests
-import sys
+import logging
+from pathlib import Path
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Dropbox direct download link for the .mlmodel file
+# Note: This should be a direct download link from Dropbox (usually ends with ?dl=1)
+DROPBOX_LINK = "https://www.dropbox.com/scl/fi/your-file-path/BERTSQUADFP16.mlmodel?dl=1"
 
 def download_model():
-    """Download the ML model from Dropbox"""
-    model_url = "https://www.dropbox.com/scl/fi/w4iclrvil6vh39mg6j7pl/BERTSQUADFP16.mlmodel?rlkey=vbrr9jjvsam1xg9i4i19pkdra&st=k1dhc2p4&dl=1"
+    """
+    Download the ML model from Dropbox and save it to the appropriate location.
     
-    # Check for environment variable for model path
-    model_data_path = os.environ.get('MODEL_DATA_PATH', None)
-    
-    if model_data_path:
-        model_dir = model_data_path
-    else:
-        model_dir = os.path.join(os.path.dirname(__file__), "app", "model")
-    
+    Returns:
+        bool: True if download was successful, False otherwise
+    """
+    # Define the model directory and file path
+    model_dir = os.path.join(os.path.dirname(__file__), "app", "model")
     model_path = os.path.join(model_dir, "BERTSQUADFP16.mlmodel")
     
-    # Create model directory if it doesn't exist
+    # Create the model directory if it doesn't exist
     os.makedirs(model_dir, exist_ok=True)
     
-    # Check if model already exists
+    # Check if the model already exists
     if os.path.exists(model_path):
-        print(f"Model already exists at {model_path}")
+        logger.info(f"Model already exists at {model_path}")
         return True
     
-    print(f"Downloading model from {model_url}")
     try:
-        # Download with progress reporting
-        response = requests.get(model_url, stream=True)
+        logger.info(f"Downloading model from Dropbox to {model_path}")
         
-        # Check if the response is successful
-        if response.status_code != 200:
-            print(f"Failed to download model: HTTP status code {response.status_code}")
-            print(f"Response content: {response.text[:500]}")  # Print first 500 chars of response
-            return False
+        # Send a GET request to the Dropbox link
+        response = requests.get(DROPBOX_LINK, stream=True)
+        
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Get the total file size
+            total_size = int(response.headers.get('content-length', 0))
             
-        total_size = int(response.headers.get('content-length', 0))
-        block_size = 1024  # 1 Kibibyte
-        
-        with open(model_path, 'wb') as f:
-            downloaded = 0
-            for data in response.iter_content(block_size):
-                downloaded += len(data)
-                f.write(data)
+            # Write the file in chunks
+            with open(model_path, 'wb') as f:
+                downloaded = 0
+                chunk_size = 1024 * 1024  # 1MB chunks
                 
-                # Update progress bar
-                if total_size > 0:  # Avoid division by zero
-                    done = int(50 * downloaded / total_size)
-                    sys.stdout.write("\r[%s%s] %d%%" % ('=' * done, ' ' * (50-done), int(100 * downloaded / total_size)))
-                    sys.stdout.flush()
-        
-        print("\nDownload complete!")
-        
-        # Verify the file was downloaded correctly
-        if os.path.getsize(model_path) > 0:
-            print(f"Model file size: {os.path.getsize(model_path) / (1024*1024):.2f} MB")
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if chunk:  # filter out keep-alive new chunks
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        
+                        # Calculate and print progress
+                        progress = (downloaded / total_size) * 100 if total_size > 0 else 0
+                        logger.info(f"Download progress: {progress:.2f}% ({downloaded}/{total_size} bytes)")
+            
+            logger.info(f"Model downloaded successfully to {model_path}")
             return True
         else:
-            print("Error: Downloaded file is empty")
+            logger.error(f"Failed to download model. Status code: {response.status_code}")
             return False
     
     except Exception as e:
-        print(f"Error downloading model: {str(e)}")
+        logger.error(f"Error downloading model: {str(e)}")
         return False
 
 if __name__ == "__main__":
     success = download_model()
     print(f"Model download {'successful' if success else 'failed'}")
+
