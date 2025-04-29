@@ -1,114 +1,157 @@
-# Backdoor AI
+# Backdoor AI - ML Model Integration
 
-Backdoor AI is a web application that allows users to chat with an AI powered by a BERT-based ML model. The application consists of two main components:
-
-1. **Backend Service**: Handles the ML model and provides API endpoints for the frontend
-2. **Frontend Service**: Provides a beautiful UI for users to interact with the AI
+This project integrates an Apple .mlmodel file (BERTSQUADFP16.mlmodel) for AI-powered chat functionality. The application consists of a React frontend and a FastAPI backend that uses the Core ML model for processing user queries.
 
 ## Features
 
-- Natural language understanding and processing
-- Web search integration for up-to-date information
-- Beautiful and responsive UI
-- Chat session export in JSON format
-- Separate backend service for ML model to optimize resource usage
+- AI-powered chat interface
+- Integration with Apple's Core ML model
+- Web search capability for enhanced responses
+- Responsive UI with Material-UI components
+- Docker containerization for easy deployment
 
-## Architecture
+## Project Structure
 
-The application is designed to run as two separate services on Render.com:
-
-1. **Backend Service**: Hosts the ML model and provides API endpoints
-2. **Frontend Service**: Serves the React application and communicates with the backend
-
-This separation allows for better resource allocation, as the ML model can be resource-intensive.
-
-## Deployment to Render.com
-
-### Prerequisites
-
-- A Render.com account
-- Git repository with this code
-
-### Backend Service Deployment
-
-1. Log in to your Render.com account
-2. Click on "New" and select "Web Service"
-3. Connect your Git repository
-4. Configure the service:
-   - **Name**: backdoor-ai-backend
-   - **Environment**: Docker
-   - **Branch**: main (or your preferred branch)
-   - **Root Directory**: backend
-   - **Instance Type**: Standard (512 MB) or higher depending on model requirements
-   - **Region**: Choose the region closest to your users
-   - **Auto-Deploy**: Yes
-5. Click "Create Web Service"
-
-### Frontend Service Deployment
-
-1. Click on "New" and select "Web Service"
-2. Connect your Git repository (same as backend)
-3. Configure the service:
-   - **Name**: backdoor-ai-frontend
-   - **Environment**: Docker
-   - **Branch**: main (or your preferred branch)
-   - **Root Directory**: frontend
-   - **Instance Type**: Free (starter) is sufficient
-   - **Region**: Same as backend
-   - **Auto-Deploy**: Yes
-   - **Environment Variables**:
-     - `REACT_APP_API_URL`: URL of your backend service (e.g., https://backdoor-ai-backend.onrender.com)
-4. Click "Create Web Service"
-
-## Local Development
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Node.js and npm (for frontend development)
-- Python 3.9+ (for backend development)
-
-### Running Locally
-
-1. Clone the repository
-2. Start both services using Docker Compose:
-
-```bash
-docker-compose up
+```
+.
+├── backend/                 # FastAPI backend
+│   ├── app/                 # Main application code
+│   │   ├── model/           # Directory for the ML model
+│   │   └── main.py          # FastAPI application
+│   ├── download_model.py    # Script to download the model from Dropbox
+│   ├── test_model.py        # Script to test the model functionality
+│   ├── run.py               # Script to run the backend locally
+│   ├── requirements.txt     # Python dependencies
+│   └── Dockerfile           # Docker configuration for backend
+├── frontend/                # React frontend
+│   ├── public/              # Static files
+│   ├── src/                 # React source code
+│   │   ├── components/      # UI components
+│   │   ├── pages/           # Page components
+│   │   └── services/        # API services
+│   ├── Dockerfile           # Docker configuration for frontend
+│   ├── nginx.conf           # Nginx configuration
+│   └── docker-entrypoint.sh # Docker entrypoint script
+├── docker-compose.yml       # Docker Compose configuration
+└── README.md                # Project documentation
 ```
 
-3. Access the application at http://localhost:3000
+## Prerequisites
 
-### Development Workflow
+- Docker and Docker Compose
+- Node.js and npm (for local development)
+- Python 3.9+ (for local development)
+- A Dropbox link to the BERTSQUADFP16.mlmodel file
 
-For frontend development:
+## Setup Instructions
+
+### 1. Configure the Dropbox Link
+
+Edit the `backend/download_model.py` file and update the `DROPBOX_LINK` variable with your Dropbox direct download link:
+
+```python
+DROPBOX_LINK = "https://www.dropbox.com/scl/fi/your-file-path/BERTSQUADFP16.mlmodel?dl=1"
+```
+
+Make sure the link ends with `?dl=1` to enable direct download.
+
+### 2. Running with Docker Compose
+
+The easiest way to run the application is using Docker Compose:
 
 ```bash
+# Build and start the containers
+docker-compose up --build
+
+# To run in detached mode
+docker-compose up -d --build
+```
+
+This will:
+- Build the backend and frontend containers
+- Download the ML model from Dropbox
+- Start the services
+- Make the application available at http://localhost:3000
+
+### 3. Running Locally for Development
+
+#### Backend Setup
+
+```bash
+# Navigate to the backend directory
+cd backend
+
+# Create a virtual environment
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Download the model
+python download_model.py
+
+# Run the backend
+python run.py
+```
+
+The backend will be available at http://localhost:8000.
+
+#### Frontend Setup
+
+```bash
+# Navigate to the frontend directory
 cd frontend
+
+# Install dependencies
 npm install
+
+# Start the development server
 npm start
 ```
 
-For backend development:
+The frontend will be available at http://localhost:3000 and will proxy API requests to the backend.
 
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+## API Endpoints
 
-## API Documentation
+- `GET /`: Health check endpoint
+- `POST /api/query`: Process a query using the ML model
+- `POST /api/chat/session`: Create a new chat session
+- `POST /api/chat/{session_id}`: Add a message to a chat session and get a response
+- `GET /api/chat/{session_id}/export`: Export a chat session as JSON
 
-Once the backend is running, you can access the API documentation at:
+## Troubleshooting
 
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+### Model Download Issues
+
+If the model fails to download:
+
+1. Check that your Dropbox link is valid and accessible
+2. Ensure the link ends with `?dl=1` for direct download
+3. Try downloading the model manually and placing it in `backend/app/model/BERTSQUADFP16.mlmodel`
+
+### Backend Connection Issues
+
+If the frontend cannot connect to the backend:
+
+1. Check that both services are running
+2. Verify the API URL configuration in the frontend
+3. Check for CORS issues in the browser console
+
+### Model Loading Issues
+
+If the model fails to load:
+
+1. Ensure the model file exists in the correct location
+2. Check the backend logs for specific error messages
+3. Verify that the model format is compatible with the coremltools version
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Author
-
-Created by Backdoor AI Team
 
