@@ -5,7 +5,7 @@ const API_URL = process.env.NODE_ENV === 'production'
   ? process.env.REACT_APP_API_URL || 'REACT_APP_API_URL_PLACEHOLDER' 
   : '';
 
-// Create axios instance with timeout
+// Create axios instance with timeout and retry logic
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -13,6 +13,25 @@ const api = axios.create({
   },
   timeout: 30000, // 30 seconds timeout
 });
+
+// Add response interceptor for better error handling
+api.interceptors.response.use(
+  response => response,
+  error => {
+    console.error('API Error:', error);
+    
+    // Create a more detailed error object
+    const enhancedError = {
+      message: 'An error occurred while communicating with the server',
+      originalError: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    };
+    
+    return Promise.reject(enhancedError);
+  }
+);
 
 // Mock response for development when backend is not available
 const mockResponse = (message) => {
@@ -58,6 +77,8 @@ export const chatService = {
   // Send a message and get a response
   sendMessage: async (sessionId, message, useWebSearch = false) => {
     try {
+      console.log('Sending message to API:', { sessionId, message, useWebSearch });
+      
       // In a real app, we'd send the message to the backend
       const response = await api.post(`/api/chat/${sessionId}`, {
         ...message,
@@ -78,10 +99,26 @@ export const chatService = {
       
       // For development, return a mock response if the API is not available
       if (process.env.NODE_ENV === 'development') {
+        console.log('Using mock response in development mode');
         return mockResponse(message);
       }
       
-      throw error;
+      // Create a user-friendly error message
+      let errorMessage = 'Sorry, I encountered an error processing your request.';
+      
+      if (error.status === 503) {
+        errorMessage = 'The AI model is not currently loaded. Please try again later.';
+      } else if (error.data && error.data.detail) {
+        errorMessage = `Error: ${error.data.detail}`;
+      }
+      
+      // Return an error message as the assistant's response
+      return {
+        role: 'assistant',
+        content: errorMessage,
+        intent: 'error',
+        timestamp: new Date().toISOString(),
+      };
     }
   },
   
