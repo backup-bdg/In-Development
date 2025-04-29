@@ -6,16 +6,12 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
-    scaling:
-      minInstances: 1
-      maxInstances: 1  # Free tier supports only 1 instance
-      targetCPUPercent: 70
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: LOG_LEVEL
         value: info
-      - key: MODEL_DATA_PATH  # Optional: Point to /tmp for model data
+      - key: MODEL_DATA_PATH
         value: /tmp/model
     # Note: Using /tmp for storage since disk is not available in free tier
     # Ensure the app can handle ephemeral storage (e.g., re-download model data on start)
@@ -27,9 +23,6 @@ services:
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     plan: free
-    scaling:
-      minInstances: 1
-      maxInstances: 1  # Free tier supports only 1 instance
     envVars:
       - key: REACT_APP_API_URL
         fromService:
