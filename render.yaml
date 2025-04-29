@@ -32,3 +32,8 @@ services:
           name: backdoor-ai-backend
           type: web
           property: host
+      - key: BACKEND_URL
+        fromService:
+          name: backdoor-ai-backend
+          type: web
+          property: url
