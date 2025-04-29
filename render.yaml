@@ -1,0 +1,35 @@
+services:
+  # Backend service for ML model
+  - type: web
+    name: backdoor-ai-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: standard
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: info
+    disk:
+      name: model-data
+      mountPath: /app/app/model
+      sizeGB: 1
+
+  # Frontend service
+  - type: web
+    name: backdoor-ai-frontend
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          name: backdoor-ai-backend
+          type: web
+          property: url
+
